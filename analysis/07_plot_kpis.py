@@ -37,7 +37,12 @@ plt.rcParams.update({
 # ── Formatadores ───────────────────────────────────────────────────────────
 def fmt_pct(x: float) -> str:
     x = float(x or 0)
-    return f"{x * 100:.2f}%"
+    pct = x * 100
+    if pct < 0.01:
+        return f"{pct:.4f}%"
+    if pct < 0.1:
+        return f"{pct:.3f}%"
+    return f"{pct:.2f}%"
 
 def fmt_brl(x: float) -> str:
     x = float(x or 0)
