@@ -29,8 +29,8 @@ import sys
 DB_PATH = Path("db/cnpj.duckdb")
 
 # Código de situação cadastral ativa na RFB
-# ⚠️ Atenção: o valor vem como '2' sem zero à esquerda
-SITUACAO_ATIVA = "2"
+# ⚠️ Atenção: o valor vem como '1' sem zero à esquerda
+SITUACAO_ATIVA = "1"
 
 # ── Main ───────────────────────────────────────────────────────────────────
 def main():
