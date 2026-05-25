@@ -36,9 +36,11 @@ plt.rcParams.update({
 
 # ── Formatadores ───────────────────────────────────────────────────────────
 def fmt_pct(x: float) -> str:
+    x = float(x or 0)
     return f"{x * 100:.2f}%"
 
 def fmt_brl(x: float) -> str:
+    x = float(x or 0)
     if x >= 1e9:
         return f"R$ {x/1e9:.2f} bi"
     if x >= 1e6:
@@ -47,22 +49,50 @@ def fmt_brl(x: float) -> str:
         return f"R$ {x/1e3:.1f} mil"
     return f"R$ {x:.2f}"
 
+def grafico_vazio(caminho: Path, mensagem: str) -> Path:
+    """Gera um gráfico placeholder quando não há dados."""
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.text(0.5, 0.5, mensagem,
+            ha="center", va="center", fontsize=13,
+            color="#888", transform=ax.transAxes)
+    ax.axis("off")
+    plt.savefig(caminho, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"   ⚠️  {caminho} (sem dados)")
+    return caminho
+
 # ── Gráfico 1: Participação geral (pizza dupla) ────────────────────────────
 def grafico_participacao(k: dict):
+    # Garante que os valores nunca são NaN
+    share_contratos = float(k.get("share_contratos") or 0)
+    share_valor     = float(k.get("share_valor") or 0)
+    contratos_total = int(k.get("contratos_total") or 0)
+    contratos_mei   = int(k.get("contratos_mei") or 0)
+    valor_total     = float(k.get("valor_total") or 0)
+    valor_mei       = float(k.get("valor_mei") or 0)
+
+    caminho = OUT_DIR / "01_participacao_mei.png"
+
+    # Se não há dados, gera gráfico placeholder
+    if share_contratos == 0 and share_valor == 0:
+        return grafico_vazio(caminho, "Nenhum contrato MEI encontrado no período")
+
     fig, axes = plt.subplots(1, 2, figsize=(11, 5))
     fig.suptitle("Participação do MEI nas Compras Federais — últimos 6 meses",
                  fontsize=FONTE_TITULO + 1, fontweight="bold", y=1.02)
 
     for ax, share, total_lbl, mei_lbl, titulo in [
-        (axes[0], k["share_contratos"],
-         f"{int(k['contratos_total']):,} contratos",
-         f"{int(k['contratos_mei']):,} com MEI",
+        (axes[0], share_contratos,
+         f"{contratos_total:,} contratos",
+         f"{contratos_mei:,} com MEI",
          "Por Quantidade de Contratos"),
-        (axes[1], k["share_valor"],
-         fmt_brl(k["valor_total"]),
-         fmt_brl(k["valor_mei"]),
+        (axes[1], share_valor,
+         fmt_brl(valor_total),
+         fmt_brl(valor_mei),
          "Por Valor Financeiro"),
     ]:
+        # Garante que a fatia nunca é exatamente 0 ou 1 (quebraria o pie)
+        share = max(0.0001, min(0.9999, share))
         valores = [share, 1 - share]
         cores   = [COR_DESTAQUE, COR_PRINCIPAL]
         labels  = [f"MEI\n{fmt_pct(share)}", "Outros"]
@@ -77,7 +107,6 @@ def grafico_participacao(k: dict):
                     xy=(0, -1.35), ha="center", fontsize=9, color="#444")
 
     plt.tight_layout()
-    caminho = OUT_DIR / "01_participacao_mei.png"
     plt.savefig(caminho, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"   ✅ {caminho}")
@@ -85,6 +114,11 @@ def grafico_participacao(k: dict):
 
 # ── Gráfico 2: Top 10 UF ──────────────────────────────────────────────────
 def grafico_top_uf(df: pd.DataFrame):
+    caminho = OUT_DIR / "02_top_uf.png"
+
+    if df.empty:
+        return grafico_vazio(caminho, "Sem dados de UF disponíveis")
+
     df = df.head(10).sort_values("valor_total")
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -102,7 +136,6 @@ def grafico_top_uf(df: pd.DataFrame):
     ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"R$ {x:.0f}mi"))
     plt.tight_layout()
 
-    caminho = OUT_DIR / "02_top_uf.png"
     plt.savefig(caminho, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"   ✅ {caminho}")
@@ -110,6 +143,11 @@ def grafico_top_uf(df: pd.DataFrame):
 
 # ── Gráfico 3: Série temporal diária ──────────────────────────────────────
 def grafico_serie_diaria(df: pd.DataFrame):
+    caminho = OUT_DIR / "03_serie_diaria.png"
+
+    if df.empty:
+        return grafico_vazio(caminho, "Sem dados de série temporal disponíveis")
+
     fig, ax = plt.subplots(figsize=(12, 5))
 
     ax.fill_between(df["dia"], df["valor_total"] / 1e6,
@@ -125,7 +163,6 @@ def grafico_serie_diaria(df: pd.DataFrame):
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"R$ {x:.0f}mi"))
     plt.tight_layout()
 
-    caminho = OUT_DIR / "03_serie_diaria.png"
     plt.savefig(caminho, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"   ✅ {caminho}")
@@ -133,10 +170,14 @@ def grafico_serie_diaria(df: pd.DataFrame):
 
 # ── Gráfico 4: Top 15 CNAE com descrição ──────────────────────────────────
 def grafico_top_cnae(df: pd.DataFrame):
+    caminho = OUT_DIR / "04_top_cnae.png"
+
+    if df.empty:
+        return grafico_vazio(caminho, "Sem dados de CNAE disponíveis")
+
     df = df.head(15).copy()
 
     # Usa a descrição se disponível, senão usa o código
-    # Trunca descrições longas para caber no gráfico
     df["label"] = df.apply(
         lambda r: (
             str(r["cnae_descricao"])[:50]
@@ -163,7 +204,6 @@ def grafico_top_cnae(df: pd.DataFrame):
     ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"R$ {x:.0f}mi"))
     plt.tight_layout()
 
-    caminho = OUT_DIR / "04_top_cnae.png"
     plt.savefig(caminho, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"   ✅ {caminho}")
@@ -171,6 +211,11 @@ def grafico_top_cnae(df: pd.DataFrame):
 
 # ── Gráfico 5: Top 15 Órgãos compradores ─────────────────────────────────
 def grafico_top_orgaos(df: pd.DataFrame):
+    caminho = OUT_DIR / "05_top_orgaos.png"
+
+    if df.empty:
+        return grafico_vazio(caminho, "Sem dados de órgãos disponíveis")
+
     df = df.head(15).copy()
     df["orgao_razao"] = df["orgao_razao"].astype(str).str.strip().str[:60]
     df = df.sort_values("valor_total")
@@ -190,7 +235,6 @@ def grafico_top_orgaos(df: pd.DataFrame):
     ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"R$ {x:.0f}mi"))
     plt.tight_layout()
 
-    caminho = OUT_DIR / "05_top_orgaos.png"
     plt.savefig(caminho, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"   ✅ {caminho}")
@@ -199,6 +243,14 @@ def grafico_top_orgaos(df: pd.DataFrame):
 # ── Relatório HTML ─────────────────────────────────────────────────────────
 def gerar_html(k: dict, caminhos: list):
     hoje = date.today().strftime("%d/%m/%Y")
+
+    # Garante valores seguros para o HTML
+    share_contratos = float(k.get("share_contratos") or 0)
+    share_valor     = float(k.get("share_valor") or 0)
+    contratos_mei   = int(k.get("contratos_mei") or 0)
+    contratos_total = int(k.get("contratos_total") or 0)
+    valor_mei       = float(k.get("valor_mei") or 0)
+    valor_total     = float(k.get("valor_total") or 0)
 
     imgs_html = ""
     titulos = [
@@ -270,22 +322,22 @@ def gerar_html(k: dict, caminhos: list):
 <div class="cards">
   <div class="card">
     <div class="label">Participação por Quantidade</div>
-    <div class="valor">{fmt_pct(k['share_contratos'])}</div>
-    <div class="sub">{int(k['contratos_mei']):,} de {int(k['contratos_total']):,} contratos</div>
+    <div class="valor">{fmt_pct(share_contratos)}</div>
+    <div class="sub">{contratos_mei:,} de {contratos_total:,} contratos</div>
   </div>
   <div class="card">
     <div class="label">Participação por Valor</div>
-    <div class="valor">{fmt_pct(k['share_valor'])}</div>
-    <div class="sub">{fmt_brl(k['valor_mei'])} de {fmt_brl(k['valor_total'])}</div>
+    <div class="valor">{fmt_pct(share_valor)}</div>
+    <div class="sub">{fmt_brl(valor_mei)} de {fmt_brl(valor_total)}</div>
   </div>
   <div class="card">
     <div class="label">Total Pago a MEIs</div>
-    <div class="valor">{fmt_brl(k['valor_mei'])}</div>
+    <div class="valor">{fmt_brl(valor_mei)}</div>
     <div class="sub">últimos 6 meses · esfera federal</div>
   </div>
   <div class="card">
     <div class="label">Contratos com MEI</div>
-    <div class="valor">{int(k['contratos_mei']):,}</div>
+    <div class="valor">{contratos_mei:,}</div>
     <div class="sub">contratos federais publicados no PNCP</div>
   </div>
 </div>
@@ -330,6 +382,12 @@ def main():
         raise RuntimeError("❌ KPIs vazios. Rode primeiro: python pipeline/06_pncp_join_mei.py")
 
     k = kpi.iloc[0].to_dict()
+
+    # Mostra resumo no terminal antes de gerar os gráficos
+    print(f"\n   Contratos total:    {int(k.get('contratos_total') or 0):,}")
+    print(f"   Contratos MEI:      {int(k.get('contratos_mei') or 0):,}")
+    print(f"   Share quantidade:   {fmt_pct(k.get('share_contratos') or 0)}")
+    print(f"   Share valor:        {fmt_pct(k.get('share_valor') or 0)}")
 
     print("\n🎨 Gerando gráficos...")
     caminhos = [

@@ -23,9 +23,9 @@ ENDPOINT  = f"{BASE_URL}/v1/contratos"
 
 DAYS_BACK = 184                   # ~6 meses para trás a partir de hoje
 PAGE_SIZES = [500, 200, 100, 50]  # tenta 500 primeiro; faz fallback se a API reclamar
-SLEEP_BETWEEN_CALLS = 2.0         # pausa entre requisições (respeita a API)
+SLEEP_BETWEEN_CALLS = 5.0         # pausa entre requisições (respeita a API)
 TIMEOUT   = 180                   # segundos por requisição
-MAX_RETRIES = 6                   # tentativas antes de desistir
+MAX_RETRIES = 20                   # tentativas antes de desistir
 BACKOFF_BASE = 1.8                # base do backoff exponencial
 
 OUT_JSONL = Path("data/pncp_contratos_6m.jsonl")  # arquivo de saída

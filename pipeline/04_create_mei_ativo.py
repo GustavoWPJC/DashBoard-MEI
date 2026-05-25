@@ -9,6 +9,12 @@
 # Esta tabela é a base para cruzar com os contratos do PNCP (script 06)
 #
 # ⚠️ Pré-requisito: scripts 01, 02 e 03 já executados com sucesso
+#
+# ⚠️ Atenção sobre nomes de colunas:
+#   Os arquivos da RFB não têm cabeçalho. O DuckDB gera nomes automáticos
+#   que variam conforme o número de colunas de cada arquivo:
+#   - empresas e simples   → column0, column1, column2...
+#   - estabelecimentos     → column00, column01, column02...
 
 import duckdb
 from pathlib import Path
@@ -18,7 +24,8 @@ import sys
 DB_PATH = Path("db/cnpj.duckdb")
 
 # Código de situação cadastral ativa na RFB
-SITUACAO_ATIVA = "02"
+# ⚠️ Atenção: o valor vem como '2' sem zero à esquerda
+SITUACAO_ATIVA = "2"
 
 # ── Main ───────────────────────────────────────────────────────────────────
 def main():
@@ -29,7 +36,7 @@ def main():
         )
 
     con = duckdb.connect(str(DB_PATH))
-    con.execute("PRAGMA threads=4;")
+    con.execute("PRAGMA threads=2;")
 
     # Verifica se as 3 tabelas de origem existem
     tabelas = ["empresas", "estabelecimentos", "simples"]
@@ -46,31 +53,41 @@ def main():
     print("⏳ Construindo tabela mei_ativo...")
     print("   (cruza empresas + estabelecimentos + simples)")
 
-    # ── Descoberta das colunas ─────────────────────────────────────────────
-    # Os arquivos da RFB não têm header, então as colunas se chamam
-    # column0, column1, column2... precisamos mapear pelos índices documentados
+    # ── Mapeamento das colunas por tabela ──────────────────────────────────
     #
-    # EMPRESAS:        column0=CNPJ_BASICO, column1=RAZAO_SOCIAL
-    # ESTABELECIMENTOS:column0=CNPJ_BASICO, column5=CNPJ_ORDEM, column6=CNPJ_DV,
-    #                  column3=SITUACAO_CADASTRAL, column19=UF, column20=MUNICIPIO,
-    #                  column11=CNAE_FISCAL_PRINCIPAL
-    # SIMPLES:         column0=CNPJ_BASICO, column1=OPCAO_SIMPLES, column3=OPCAO_MEI
+    # EMPRESAS (column0, column1...):
+    #   column0 = CNPJ_BASICO
+    #   column1 = RAZAO_SOCIAL
+    #
+    # ESTABELECIMENTOS (column00, column01...):
+    #   column00 = CNPJ_BASICO
+    #   column05 = CNPJ_ORDEM
+    #   column06 = CNPJ_DV
+    #   column03 = SITUACAO_CADASTRAL (valores: 1=Nula, 2=Ativa, 3=Suspensa, 4=Inapta, 8=Baixada)
+    #   column11 = CNAE_FISCAL_PRINCIPAL
+    #   column19 = UF
+    #   column20 = MUNICIPIO
+    #
+    # SIMPLES (column0, column1...):
+    #   column0 = CNPJ_BASICO
+    #   column1 = OPCAO_SIMPLES
+    #   column4 = OPCAO_MEI  ← corrigido (era column3)
 
     con.execute("DROP TABLE IF EXISTS mei_ativo;")
     con.execute(f"""
         CREATE TABLE mei_ativo AS
         SELECT
             -- Monta CNPJ completo de 14 dígitos (basico + ordem + dv)
-            lpad(CAST(e.column0 AS VARCHAR), 8, '0') ||
-            lpad(CAST(est.column5 AS VARCHAR), 4, '0') ||
-            lpad(CAST(est.column6 AS VARCHAR), 2, '0')  AS CNPJ,
+            lpad(CAST(e.column0    AS VARCHAR), 8, '0') ||
+            lpad(CAST(est.column05 AS VARCHAR), 4, '0') ||
+            lpad(CAST(est.column06 AS VARCHAR), 2, '0')  AS CNPJ,
 
-            e.column1                                    AS RAZAO_SOCIAL,
-            est.column19                                 AS UF,
-            est.column20                                 AS MUNICIPIO,
-            est.column11                                 AS CNAE_PRINCIPAL,
-            est.column3                                  AS SITUACAO_CADASTRAL,
-            'S'                                          AS FLAG_MEI
+            e.column1                                     AS RAZAO_SOCIAL,
+            est.column19                                  AS UF,
+            est.column20                                  AS MUNICIPIO,
+            est.column11                                  AS CNAE_PRINCIPAL,
+            est.column03                                  AS SITUACAO_CADASTRAL,
+            'S'                                           AS FLAG_MEI
 
         FROM simples s
         -- Junta com empresas pelo CNPJ básico (8 dígitos)
@@ -80,13 +97,13 @@ def main():
         -- Junta com estabelecimentos pelo CNPJ básico
         JOIN estabelecimentos est
           ON lpad(CAST(s.column0 AS VARCHAR), 8, '0') =
-             lpad(CAST(est.column0 AS VARCHAR), 8, '0')
+             lpad(CAST(est.column00 AS VARCHAR), 8, '0')
 
         WHERE
-            -- Só MEI (opcaoMEI = 'S')
-            upper(trim(s.column3)) = 'S'
-            -- Só situação ativa (código 02 = Ativa)
-            AND trim(est.column3) = '{SITUACAO_ATIVA}';
+            -- Só MEI (opcaoMEI = 'S') — coluna correta é column4
+            upper(trim(s.column4)) = 'S'
+            -- Só situação ativa (valor '2' sem zero à esquerda)
+            AND trim(est.column03) = '{SITUACAO_ATIVA}';
     """)
 
     total = con.execute("SELECT COUNT(*) FROM mei_ativo").fetchone()[0]
@@ -113,7 +130,7 @@ def main():
     con.close()
 
     print(f"\n✅ mei_ativo criada: {total:,} MEIs ativos encontrados")
-    print("   Próximo passo: python pipeline/05_pncp_coleta_contratos.py")
+    print("   Próximo passo: python pipeline/06_pncp_join_mei.py")
 
 if __name__ == "__main__":
     try:
