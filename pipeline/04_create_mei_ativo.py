@@ -79,8 +79,9 @@ def main():
         SELECT
             -- Monta CNPJ completo de 14 dígitos (basico + ordem + dv)
             lpad(CAST(e.column0    AS VARCHAR), 8, '0') ||
-            lpad(CAST(est.column05 AS VARCHAR), 4, '0') ||
-            lpad(CAST(est.column06 AS VARCHAR), 2, '0')  AS CNPJ,
+            lpad(right(CAST(est.column05 AS VARCHAR), 4), 4, '0') ||
+            lpad(right(CAST(est.column06 AS VARCHAR), 2), 2, '0')  AS CNPJ,
+
 
             e.column1                                     AS RAZAO_SOCIAL,
             est.column19                                  AS UF,
