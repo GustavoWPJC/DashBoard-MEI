@@ -1,4 +1,4 @@
-# 📊 Projeto MEMP — MEI nas Compras Públicas Federais
+# 📊 Projeto MEMP — MEI nas Compras Públicas
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![DuckDB](https://img.shields.io/badge/DuckDB-latest-yellow.svg)](https://duckdb.org/)
@@ -7,7 +7,7 @@
 [![Licença: MIT](https://img.shields.io/badge/Licença-MIT-lightgrey.svg)](LICENSE)
 
 > Análise quantitativa da participação de **Microempreendedores Individuais (MEI)**
-> nas contratações públicas federais brasileiras, com atualização mensal automatizada.
+> nas contratações públicas brasileiras, com atualização mensal automatizada.
 
 ---
 
@@ -27,7 +27,7 @@ Este projeto responde a quatro perguntas estratégicas:
 ## 🗂️ Fontes de Dados
 
 ### Receita Federal — Cadastro CNPJ (dados abertos)
-**URL:** https://dadosabertos.rfb.gov.br/CNPJ/
+**URL:** https://dados-abertos-rf-cnpj.casadosdados.com.br/arquivos
 
 Arquivos utilizados:
 - `Empresas*.zip` → razão social
@@ -292,7 +292,7 @@ pip install -r requirements.txt
 ---
 
 ## 👥 Autores
-
+Kaielly, Gustavo, Vinicius e Kauã.
 Projeto de Extensão — **MEMP**
 Desenvolvido com base nos dados abertos da Receita Federal e do PNCP.
 
