@@ -15,6 +15,11 @@
 #   que variam conforme o número de colunas de cada arquivo:
 #   - empresas e simples   → column0, column1, column2...
 #   - estabelecimentos     → column00, column01, column02...
+#
+# ⚠️ Mapeamento real descoberto inspecionando os dados:
+#   column00 = CNPJ_BASICO
+#   column01 = CNPJ_ORDEM  ← corrigido (era column05)
+#   column02 = CNPJ_DV     ← corrigido (era column06)
 
 import duckdb
 from pathlib import Path
@@ -61,17 +66,17 @@ def main():
     #
     # ESTABELECIMENTOS (column00, column01...):
     #   column00 = CNPJ_BASICO
-    #   column05 = CNPJ_ORDEM
-    #   column06 = CNPJ_DV
+    #   column01 = CNPJ_ORDEM       ← corrigido (era column05)
+    #   column02 = CNPJ_DV          ← corrigido (era column06)
     #   column03 = SITUACAO_CADASTRAL (valores: 1=Nula, 2=Ativa, 3=Suspensa, 4=Inapta, 8=Baixada)
     #   column11 = CNAE_FISCAL_PRINCIPAL
     #   column19 = UF
-    #   column20 = MUNICIPIO
+    #   column20 = MUNICIPIO_CODIGO
     #
     # SIMPLES (column0, column1...):
     #   column0 = CNPJ_BASICO
     #   column1 = OPCAO_SIMPLES
-    #   column4 = OPCAO_MEI  ← corrigido (era column3)
+    #   column4 = OPCAO_MEI
 
     con.execute("DROP TABLE IF EXISTS mei_ativo;")
     con.execute(f"""
@@ -79,9 +84,8 @@ def main():
         SELECT
             -- Monta CNPJ completo de 14 dígitos (basico + ordem + dv)
             lpad(CAST(e.column0    AS VARCHAR), 8, '0') ||
-            lpad(right(CAST(est.column05 AS VARCHAR), 4), 4, '0') ||
-            lpad(right(CAST(est.column06 AS VARCHAR), 2), 2, '0')  AS CNPJ,
-
+            lpad(CAST(est.column01 AS VARCHAR), 4, '0') ||
+            lpad(CAST(est.column02 AS VARCHAR), 2, '0')  AS CNPJ,
 
             e.column1                                     AS RAZAO_SOCIAL,
             est.column19                                  AS UF,
