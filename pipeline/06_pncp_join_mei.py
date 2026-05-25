@@ -50,7 +50,10 @@ def main():
     print(f"   ✅ {cnt_raw:,} contratos carregados (raw)")
 
     # ── ETAPA 2: Carrega tabela de CNAEs ──────────────────────────────────
-    cnaes_files = sorted([str(p) for p in CSV_DIR.glob("*Cnaes*") if not str(p).endswith(".zip")])
+    cnaes_files = sorted([
+    str(p) for p in CSV_DIR.glob("*")
+    if "CNAE" in str(p).upper() and not str(p).endswith(".zip")
+])
 
     if cnaes_files:
         print("⏳ Carregando tabela de CNAEs...")
