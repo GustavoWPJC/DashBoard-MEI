@@ -9,7 +9,7 @@
 #   1. Carrega o JSONL no DuckDB (staging)
 #   2. Carrega a tabela de descrição dos CNAEs
 #   3. Normaliza o CNPJ do fornecedor
-#   4. Filtra só contratos da esfera Federal (esferaId = 'F')
+#   4. Usa TODOS os contratos (todas as esferas)
 #   5. Cruza com a tabela mei_ativo pelo CNPJ
 #   6. Gera 5 tabelas de KPIs prontas para os gráficos
 
@@ -50,8 +50,6 @@ def main():
     print(f"   ✅ {cnt_raw:,} contratos carregados (raw)")
 
     # ── ETAPA 2: Carrega tabela de CNAEs ──────────────────────────────────
-    # Traduz código numérico → descrição da atividade econômica
-    # Ex: 4712100 → "Comércio varejista de mercadorias em geral"
     cnaes_files = sorted([str(p) for p in CSV_DIR.glob("*Cnaes*") if not str(p).endswith(".zip")])
 
     if cnaes_files:
@@ -80,8 +78,6 @@ def main():
         con.execute("CREATE TABLE cnaes (codigo VARCHAR, descricao VARCHAR);")
 
     # ── ETAPA 3: Normaliza o CNPJ do fornecedor ───────────────────────────
-    # Só considera PJ com CNPJ de exatamente 14 dígitos
-    # MEI é sempre Pessoa Jurídica — CPFs e registros inválidos são ignorados
     print("⏳ Normalizando CNPJs dos fornecedores...")
     con.execute("ALTER TABLE pncp_contratos_raw ADD COLUMN IF NOT EXISTS fornecedor_cnpj VARCHAR;")
     con.execute("""
@@ -95,21 +91,21 @@ def main():
             END;
     """)
 
-    # ── ETAPA 4: Filtra apenas esfera Federal ─────────────────────────────
-    # esferaId: F=Federal, E=Estadual, M=Municipal, D=Distrital
-    print("⏳ Filtrando contratos federais...")
+    # ── ETAPA 4: Usa TODOS os contratos (todas as esferas) ────────────────
+    # Analisamos Municipal, Estadual, Federal, Nacional e Distrital
+    # para ter uma visão completa do quanto o governo gasta com MEIs
+    print("⏳ Preparando todos os contratos (todas as esferas)...")
     con.execute("DROP TABLE IF EXISTS pncp_contratos_federal_6m;")
     con.execute("""
         CREATE TABLE pncp_contratos_federal_6m AS
         SELECT *
         FROM pncp_contratos_raw
-        WHERE orgaoEntidade.esferaId = 'F';
+        WHERE fornecedor_cnpj IS NOT NULL;
     """)
     cnt_fed = con.execute("SELECT COUNT(*) FROM pncp_contratos_federal_6m").fetchone()[0]
-    print(f"   ✅ {cnt_fed:,} contratos federais")
+    print(f"   ✅ {cnt_fed:,} contratos com CNPJ válido (todas as esferas)")
 
     # ── ETAPA 5: Cruza com a tabela mei_ativo ─────────────────────────────
-    # Só entram contratos cujo CNPJ do fornecedor existe na base de MEI ativo
     print("⏳ Cruzando com base de MEI ativo...")
     con.execute("DROP TABLE IF EXISTS pncp_mei_federal_6m;")
     con.execute("""
@@ -120,7 +116,6 @@ def main():
             m.UF             AS mei_uf,
             m.MUNICIPIO      AS mei_municipio,
             m.CNAE_PRINCIPAL AS mei_cnae,
-            -- Já traz a descrição do CNAE para evitar JOIN repetido nos KPIs
             COALESCE(c.descricao, m.CNAE_PRINCIPAL) AS mei_cnae_descricao
         FROM pncp_contratos_federal_6m p
         JOIN mei_ativo m
@@ -133,15 +128,14 @@ def main():
     print(f"   ✅ {cnt_mei:,} contratos firmados com MEI")
 
     # Índices para acelerar as consultas dos KPIs
-    con.execute("CREATE INDEX IF NOT EXISTS idx_raw_cnpj     ON pncp_contratos_raw(fornecedor_cnpj);")
-    con.execute("CREATE INDEX IF NOT EXISTS idx_fed_cnpj     ON pncp_contratos_federal_6m(fornecedor_cnpj);")
-    con.execute("CREATE INDEX IF NOT EXISTS idx_mei_fed_cnpj ON pncp_mei_federal_6m(fornecedor_cnpj);")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_raw_cnpj      ON pncp_contratos_raw(fornecedor_cnpj);")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_fed_cnpj      ON pncp_contratos_federal_6m(fornecedor_cnpj);")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_mei_fed_cnpj  ON pncp_mei_federal_6m(fornecedor_cnpj);")
 
     # ── ETAPA 6: Geração dos KPIs ─────────────────────────────────────────
     print("\n⏳ Gerando KPIs...")
 
-    # KPI 1 — Participação geral (% de contratos e % de valor)
-    # Responde: "Qual a fatia do MEI nas compras federais?"
+    # KPI 1 — Participação geral
     con.execute("DROP TABLE IF EXISTS kpi_mei_participacao_federal_6m;")
     con.execute("""
         CREATE TABLE kpi_mei_participacao_federal_6m AS
@@ -171,8 +165,7 @@ def main():
         FROM base, mei;
     """)
 
-    # KPI 2 — Top UF dos MEIs vendedores
-    # Responde: "Quais estados têm mais MEIs contratados pelo governo federal?"
+    # KPI 2 — Top UF
     con.execute("DROP TABLE IF EXISTS kpi_mei_top_uf_federal_6m;")
     con.execute("""
         CREATE TABLE kpi_mei_top_uf_federal_6m AS
@@ -185,8 +178,7 @@ def main():
         ORDER BY valor_total DESC;
     """)
 
-    # KPI 3 — Top CNAE dos MEIs com descrição
-    # Responde: "Quais atividades econômicas (concorrentes) mais vendem para o governo?"
+    # KPI 3 — Top CNAE com descrição
     con.execute("DROP TABLE IF EXISTS kpi_mei_top_cnae_federal_6m;")
     con.execute("""
         CREATE TABLE kpi_mei_top_cnae_federal_6m AS
@@ -201,8 +193,7 @@ def main():
         LIMIT 50;
     """)
 
-    # KPI 4 — Top órgãos que mais compram de MEI
-    # Responde: "Quem são os maiores compradores federais de MEI?"
+    # KPI 4 — Top órgãos
     con.execute("DROP TABLE IF EXISTS kpi_mei_top_orgaos_federal_6m;")
     con.execute("""
         CREATE TABLE kpi_mei_top_orgaos_federal_6m AS
@@ -218,7 +209,6 @@ def main():
     """)
 
     # KPI 5 — Série temporal diária
-    # Responde: "Como evoluiu a participação do MEI ao longo dos 6 meses?"
     con.execute("DROP TABLE IF EXISTS kpi_mei_serie_diaria_federal_6m;")
     con.execute("""
         CREATE TABLE kpi_mei_serie_diaria_federal_6m AS
@@ -236,7 +226,7 @@ def main():
     print("📊 RESUMO DO CRUZAMENTO")
     print("="*50)
     print(f"  Contratos raw (total):      {cnt_raw:>10,}")
-    print(f"  Contratos federais:         {cnt_fed:>10,}")
+    print(f"  Contratos com CNPJ válido:  {cnt_fed:>10,}")
     print(f"  Contratos com MEI:          {cnt_mei:>10,}")
 
     kpi = con.execute("SELECT * FROM kpi_mei_participacao_federal_6m").fetchdf()
